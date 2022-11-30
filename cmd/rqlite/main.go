@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"github.com/chzyer/readline"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Bowery/prompt"
 	"github.com/mkideal/cli"
 	"github.com/rqlite/rqlite/cmd"
 	httpcl "github.com/rqlite/rqlite/cmd/rqlite/http"
@@ -88,13 +88,13 @@ func main() {
 
 		timer := false
 		consistency := "weak"
-		prefix := fmt.Sprintf("%s:%d>", argv.Host, argv.Port)
-		term, err := prompt.NewTerminal()
+		prefix := fmt.Sprintf("%s:%d> ", argv.Host, argv.Port)
+		term, err := readline.New(prefix)
 		if err != nil {
 			ctx.String("%s %v\n", ctx.Color().Red("ERR!"), err)
 			return nil
 		}
-		term.Close()
+		defer term.Close()
 
 		hosts := createHostList(argv)
 		client := httpcl.NewClient(httpClient, hosts,
@@ -104,9 +104,7 @@ func main() {
 
 	FOR_READ:
 		for {
-			term.Reopen()
-			line, err := term.Basic(prefix, false)
-			term.Close()
+			line, err := term.Readline()
 			if err != nil {
 				return err
 			}

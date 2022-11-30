@@ -3,8 +3,8 @@ module github.com/rqlite/rqlite
 go 1.16
 
 require (
-	github.com/Bowery/prompt v0.0.0-20190916142128-fa8279994f75
 	github.com/armon/go-metrics v0.4.1 // indirect
+	github.com/chzyer/readline v1.5.1
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/hashicorp/consul/api v1.16.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
