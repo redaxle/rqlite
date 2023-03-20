@@ -36,10 +36,6 @@ var (
 	// operation.
 	ErrNotLeader = errors.New("not leader")
 
-	// ErrSelfJoin is returned when a join-request is received from a node
-	// with the same Raft ID as this node.
-	ErrSelfJoin = errors.New("self-join attempted")
-
 	// ErrStaleRead is returned if the executing the query would violate the
 	// requested freshness.
 	ErrStaleRead = errors.New("stale read")
@@ -214,9 +210,10 @@ type Store struct {
 	numTrailingLogs uint64
 
 	// For whitebox testing
-	numNoops       int
-	numSnapshotsMu sync.Mutex
-	numSnapshots   int
+	numIgnoredJoins int
+	numNoops        int
+	numSnapshotsMu  sync.Mutex
+	numSnapshots    int
 }
 
 // IsNewNode returns whether a node using raftDir would be a brand-new node.
@@ -415,6 +412,17 @@ func (s *Store) Bootstrap(servers ...*Server) error {
 	})
 
 	return nil
+}
+
+// Stepdown forces this node to relinquish leadership to another node in
+// the cluster. If this node is not the leader, and 'wait' is true, an error
+// will be returned.
+func (s *Store) Stepdown(wait bool) error {
+	f := s.raft.LeadershipTransfer()
+	if !wait {
+		return nil
+	}
+	return f.(raft.Future).Error()
 }
 
 // Close closes the store. If wait is true, waits for a graceful shutdown.
@@ -1003,9 +1011,6 @@ func (s *Store) Join(id, addr string, voter bool) error {
 	if s.raft.State() != raft.Leader {
 		return ErrNotLeader
 	}
-	if id == s.raftID {
-		return ErrSelfJoin
-	}
 
 	configFuture := s.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
@@ -1021,6 +1026,7 @@ func (s *Store) Join(id, addr string, voter bool) error {
 			// join is actually needed.
 			if srv.Address == raft.ServerAddress(addr) && srv.ID == raft.ServerID(id) {
 				stats.Add(numIgnoredJoins, 1)
+				s.numIgnoredJoins++
 				s.logger.Printf("node %s at %s already member of cluster, ignoring join request", id, addr)
 				return nil
 			}

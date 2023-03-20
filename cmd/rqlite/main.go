@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/chzyer/readline"
 	"io"
@@ -14,10 +15,12 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mkideal/cli"
 	"github.com/rqlite/rqlite/cmd"
+	"github.com/rqlite/rqlite/cmd/rqlite/history"
 	httpcl "github.com/rqlite/rqlite/cmd/rqlite/http"
 )
 
@@ -78,7 +81,12 @@ func main() {
 
 		version, err := getVersionWithClient(httpClient, argv)
 		if err != nil {
-			ctx.String("%s %v\n", ctx.Color().Red("ERR!"), err)
+			msg := err.Error()
+			if errors.Is(err, syscall.ECONNREFUSED) {
+				msg = fmt.Sprintf("Unable to connect to rqlited at %s://%s:%d - is it running?",
+					argv.Protocol, argv.Host, argv.Port)
+			}
+			ctx.String("%s %v\n", ctx.Color().Red("ERR!"), msg)
 			return nil
 		}
 
@@ -96,6 +104,16 @@ func main() {
 		}
 		defer term.Close()
 
+		// Set up command history.
+		hr := history.Reader()
+		if hr != nil {
+			histCmds, err := history.Read(hr)
+			if err == nil {
+				term.History = histCmds
+			}
+			hr.Close()
+		}
+
 		hosts := createHostList(argv)
 		client := httpcl.NewClient(httpClient, hosts,
 			httpcl.WithScheme(argv.Protocol),
@@ -106,6 +124,9 @@ func main() {
 		for {
 			line, err := term.Readline()
 			if err != nil {
+				if errors.Is(err, prompt.ErrEOF) {
+					break FOR_READ
+				}
 				return err
 			}
 
@@ -188,6 +209,14 @@ func main() {
 					ctx.String("%s %v\n", ctx.Color().Red("ERR!"), err)
 				}
 			}
+		}
+
+		hw := history.Writer()
+		sz := history.Size()
+		history.Write(term.History, sz, hw)
+		hw.Close()
+		if sz <= 0 {
+			history.Delete()
 		}
 		ctx.String("bye~\n")
 		return nil

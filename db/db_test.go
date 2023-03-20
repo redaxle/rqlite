@@ -940,6 +940,92 @@ func Test_SimpleParameterizedStatements(t *testing.T) {
 	}
 }
 
+func Test_SimpleTwoParameterizedStatements(t *testing.T) {
+	db, path := mustCreateDatabase()
+	defer db.Close()
+	defer os.Remove(path)
+
+	_, err := db.ExecuteStringStmt("CREATE TABLE foo (id INTEGER NOT NULL PRIMARY KEY, first TEXT, last TEXT)")
+	if err != nil {
+		t.Fatalf("failed to create table: %s", err.Error())
+	}
+
+	req := &command.Request{
+		Statements: []*command.Statement{
+			{
+				Sql: "INSERT INTO foo(first, last) VALUES(?, ?)",
+				Parameters: []*command.Parameter{
+					{
+						Value: &command.Parameter_S{
+							S: "bob",
+						},
+					},
+					{
+						Value: &command.Parameter_S{
+							S: "bobbers",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err = db.Execute(req, false)
+	if err != nil {
+		t.Fatalf("failed to insert record: %s", err.Error())
+	}
+
+	r, err := db.QueryStringStmt(`SELECT * FROM foo`)
+	if err != nil {
+		t.Fatalf("failed to query table: %s", err.Error())
+	}
+	if exp, got := `[{"columns":["id","first","last"],"types":["integer","text","text"],"values":[[1,"bob","bobbers"]]}]`, asJSON(r); exp != got {
+		t.Fatalf("unexpected results for query\nexp: %s\ngot: %s", exp, got)
+	}
+}
+
+func Test_SimpleNilParameterizedStatements(t *testing.T) {
+	db, path := mustCreateDatabase()
+	defer db.Close()
+	defer os.Remove(path)
+
+	_, err := db.ExecuteStringStmt("CREATE TABLE foo (id INTEGER NOT NULL PRIMARY KEY, first TEXT, last TEXT)")
+	if err != nil {
+		t.Fatalf("failed to create table: %s", err.Error())
+	}
+
+	req := &command.Request{
+		Statements: []*command.Statement{
+			{
+				Sql: "INSERT INTO foo(first, last) VALUES(?, ?)",
+				Parameters: []*command.Parameter{
+					{
+						Value: &command.Parameter_S{
+							S: "bob",
+						},
+					},
+					{
+						Value: nil,
+					},
+				},
+			},
+		},
+	}
+
+	_, err = db.Execute(req, false)
+	if err != nil {
+		t.Fatalf("failed to insert record: %s", err.Error())
+	}
+
+	r, err := db.QueryStringStmt(`SELECT * FROM foo`)
+	if err != nil {
+		t.Fatalf("failed to query table: %s", err.Error())
+	}
+	if exp, got := `[{"columns":["id","first","last"],"types":["integer","text","text"],"values":[[1,"bob",null]]}]`, asJSON(r); exp != got {
+		t.Fatalf("unexpected results for query\nexp: %s\ngot: %s", exp, got)
+	}
+}
+
 func Test_SimpleNamedParameterizedStatements(t *testing.T) {
 	db, path := mustCreateDatabase()
 	defer db.Close()
@@ -1826,6 +1912,47 @@ func Test_JSON1(t *testing.T) {
 	}
 	if exp, got := `[{"columns":["customer.phone ->> '$.mobile'"],"types":[""],"values":[["789111"]]}]`, asJSON(q); exp != got {
 		t.Fatalf("unexpected results for JSON query, expected %s, got %s", exp, got)
+	}
+}
+
+// Test_TableCreationInMemoryLoadRaw tests for https://sqlite.org/forum/forumpost/d443fb0730
+func Test_TableCreationInMemoryLoadRaw(t *testing.T) {
+	db := mustCreateInMemoryDatabase()
+	defer db.Close()
+
+	_, err := db.ExecuteStringStmt("CREATE TABLE logs (entry TEXT)")
+	if err != nil {
+		t.Fatalf("failed to create table: %s", err.Error())
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+
+	// Insert some records continually, as fast as possible. Do it from a goroutine.
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				_, err := db.ExecuteStringStmt(`INSERT INTO logs(entry) VALUES("hello")`)
+				if err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	// Get the count over and over again.
+	for i := 0; i < 5000; i++ {
+		rows, err := db.QueryStringStmt(`SELECT COUNT(*) FROM logs`)
+		if err != nil {
+			t.Fatalf("failed to query for count: %s", err)
+		}
+
+		if rows[0].Error != "" {
+			t.Fatalf("rows had error after %d queries: %s", i, rows[0].Error)
+		}
 	}
 }
 

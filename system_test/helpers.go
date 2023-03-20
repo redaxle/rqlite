@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -122,39 +122,17 @@ func (n *Node) ExecuteQueuedMulti(stmts []string, wait bool) (string, error) {
 
 // Query runs a single query against the node.
 func (n *Node) Query(stmt string) (string, error) {
-	v, _ := url.Parse("http://" + n.APIAddr + "/db/query")
-	v.RawQuery = url.Values{"q": []string{stmt}}.Encode()
-
-	resp, err := http.Get(v.String())
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
+	return n.query(stmt, "weak")
 }
 
 // QueryNoneConsistency runs a single query against the node, with no read consistency.
 func (n *Node) QueryNoneConsistency(stmt string) (string, error) {
-	v, _ := url.Parse("http://" + n.APIAddr + "/db/query")
-	v.RawQuery = url.Values{
-		"q":     []string{stmt},
-		"level": []string{"none"},
-	}.Encode()
+	return n.query(stmt, "none")
+}
 
-	resp, err := http.Get(v.String())
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
+// QueryStrongConsistency runs a single query against the node, with Strong read consistency.
+func (n *Node) QueryStrongConsistency(stmt string) (string, error) {
+	return n.query(stmt, "strong")
 }
 
 // QueryMulti runs multiple queries against the node.
@@ -257,7 +235,7 @@ func (n *Node) Nodes(includeNonVoters bool) (NodesStatus, error) {
 		return nil, fmt.Errorf("nodes endpoint returned: %s", resp.Status)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +259,7 @@ func (n *Node) Status() (string, error) {
 		return "", fmt.Errorf("status endpoint returned: %s", resp.Status)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -328,7 +306,7 @@ func (n *Node) ExpvarKey(k string) (string, error) {
 		return "", fmt.Errorf("expvar endpoint returned: %s", resp.Status)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -361,7 +339,7 @@ func (n *Node) postExecute(stmt string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -379,7 +357,26 @@ func (n *Node) postExecuteQueued(stmt string, wait bool) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func (n *Node) query(stmt, consistency string) (string, error) {
+	v, _ := url.Parse("http://" + n.APIAddr + "/db/query")
+	v.RawQuery = url.Values{
+		"q":     []string{stmt},
+		"level": []string{consistency},
+	}.Encode()
+
+	resp, err := http.Get(v.String())
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -392,7 +389,7 @@ func (n *Node) postQuery(stmt string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -416,7 +413,7 @@ func PostExecuteStmtMulti(apiAddr string, stmts []string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -480,13 +477,15 @@ func (c Cluster) Followers() ([]*Node, error) {
 
 // RemoveNode removes the given node from the list of nodes representing
 // a cluster.
-func (c Cluster) RemoveNode(node *Node) {
+func (c Cluster) RemoveNode(node *Node) Cluster {
+	nodes := []*Node{}
 	for i, n := range c {
 		if n.RaftAddr == node.RaftAddr {
-			c = append(c[:i], c[i+1:]...)
-			return
+			continue
 		}
+		nodes = append(nodes, c[i])
 	}
+	return nodes
 }
 
 // FindNodeByRaftAddr returns the node with the given Raft address.
@@ -627,7 +626,7 @@ func mustNodeEncryptedOnDisk(dir string, enableSingle, httpEncrypt bool, mux *tc
 	}
 	node.Cluster = clstr
 
-	clstrDialer := tcp.NewDialer(cluster.MuxClusterHeader, false, true)
+	clstrDialer := tcp.NewDialer(cluster.MuxClusterHeader, nil)
 	clstrClient := cluster.NewClient(clstrDialer, 30*time.Second)
 	node.Service = httpd.New("localhost:0", node.Store, clstrClient, nil)
 	node.Service.Expvar = true
@@ -659,7 +658,7 @@ func mustNewLeaderNode() *Node {
 
 func mustTempDir() string {
 	var err error
-	path, err := ioutil.TempDir("", "rqlilte-system-test-")
+	path, err := os.MkdirTemp("", "rqlilte-system-test-")
 	if err != nil {
 		panic("failed to create temp dir")
 	}
@@ -697,11 +696,10 @@ func mustNewOpenTLSMux(certFile, keyPath, addr string) *tcp.Mux {
 	}
 
 	var mux *tcp.Mux
-	mux, err = tcp.NewTLSMux(ln, nil, certFile, keyPath, "")
+	mux, err = tcp.NewTLSMux(ln, nil, certFile, keyPath, "", true, false)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create node-to-node mux: %s", err.Error()))
 	}
-	mux.InsecureSkipVerify = true
 
 	go mux.Serve()
 	return mux
@@ -773,7 +771,7 @@ func mustCreateTLSConfig(certFile, keyFile, caCertFile string) *tls.Config {
 	}
 
 	if caCertFile != "" {
-		asn1Data, err := ioutil.ReadFile(caCertFile)
+		asn1Data, err := os.ReadFile(caCertFile)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -882,7 +880,7 @@ func copyDir(src string, dst string) (err error) {
 		return
 	}
 
-	entries, err := ioutil.ReadDir(src)
+	entries, err := os.ReadDir(src)
 	if err != nil {
 		return
 	}
@@ -898,7 +896,7 @@ func copyDir(src string, dst string) (err error) {
 			}
 		} else {
 			// Skip symlinks.
-			if entry.Mode()&os.ModeSymlink != 0 {
+			if entry.Type()&fs.ModeSymlink != 0 {
 				continue
 			}
 

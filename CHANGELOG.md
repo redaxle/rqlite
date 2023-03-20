@@ -1,7 +1,50 @@
-## 7.12.0 (unreleased)
+## 7.14.2 (unreleased)
+## Implementation changes and bug fixes
+- [PR #1179](https://github.com/rqlite/rqlite/pull/1179): go mod updates.
+- [PR #1180](https://github.com/rqlite/rqlite/pull/1180): Support large numbers in requests.
+
+## 7.14.1 (March 17th 2023)
+## Implementation changes and bug fixes
+- [PR #1174](https://github.com/rqlite/rqlite/pull/1174): Fix command-line help for x509 resources.
+- [PR #1178](https://github.com/rqlite/rqlite/pull/1178): Fix parsing of Named Parameters with `NULL` as value. Fixes [issue #1177](https://github.com/rqlite/rqlite/issues/1177). Thanks @wellescastro
+
+## 7.14.0 (March 8th 2023)
+This release sees the addition of mutual TLS support, and corrects some other issues related to the use of TLS and Certificate Authority configuration.
+
+### New features
+- [PR #1171](https://github.com/rqlite/rqlite/pull/1171): Support mutual TLS for both HTTP connections and inter-node traffic. See [issue #1167](https://github.com/rqlite/rqlite/issues/1167). Thanks @otto-dev
+
+### Implementation changes and bug fixes
+- [PR #1173](https://github.com/rqlite/rqlite/pull/1173): go mod updates.
+
+## 7.13.2 (February 23rd 2023)
+### Implementation changes and bug fixes
+- [PR #1156](https://github.com/rqlite/rqlite/pull/1156): Better error message when rqlite shell can't connect to a node.
+- [PR #1162](https://github.com/rqlite/rqlite/pull/1162): Fix Consul-based discovery issue when using TLS.
+- [PR #1163](https://github.com/rqlite/rqlite/pull/1163): go mod updates.
+
+## 7.13.1 (January 6th 2023)
+### Implementation changes and bug fixes
+- [PR #1146](https://github.com/rqlite/rqlite/pull/1146): Delete history file if `RQLITE_HISTFILESIZE` environment variable is zero. Fixes [issue #1145](https://github.com/rqlite/rqlite/issues/1145). Thanks @jamielinux
+- [PR #1148](https://github.com/rqlite/rqlite/pull/1148): go mod updates.
+
+## 7.13.0 (December 15th 2022)
+### New features
+- [PR #1141](https://github.com/rqlite/rqlite/pull/1141): Store and load CLI history across sessions.
+
+## 7.12.1 (December 7th 2022)
+### Implementation changes and bug fixes
+- [PR #1135](https://github.com/rqlite/rqlite/pull/1135): Silently ignore self-joins if nothing has changed on the joining node.
+- [PR #1136](https://github.com/rqlite/rqlite/pull/1136): Stop HTTP server gracefully on node shutdown.
+- [f6c4b17](https://github.com/rqlite/rqlite/commit/f6c4b17a727809696f952a018b2262681932f521): By default, Leader node will stepdown if that node is shutting down.
+- [PR #1139](https://github.com/rqlite/rqlite/pull/1139): Cache hashed passwords. Fixes [issue #1138](https://github.com/rqlite/rqlite/issues/1138).
+- [PR #1140](https://github.com/rqlite/rqlite/pull/1140): Use SQLite with corrected in-memory database locking ([SQLite forum post](https://sqlite.org/forum/forumpost/d443fb0730)). Fixes [issue #1103](https://github.com/rqlite/rqlite/issues/1103).
+
+## 7.12.0 (December 1st 2022)
 ### New features
 - [PR #1121](https://github.com/rqlite/rqlite/pull/1121): Transparently forward node-removal requests to Leader.
 - [PR #1125](https://github.com/rqlite/rqlite/pull/1125): Support fetching a subset of expvar information.
+- [PR #1134](https://github.com/rqlite/rqlite/pull/1134): Support stepping down as Leader before shutting down.
 
 ### Implementation changes and bug fixes
 - [PR #1120](https://github.com/rqlite/rqlite/pull/1120): go mod updates.
