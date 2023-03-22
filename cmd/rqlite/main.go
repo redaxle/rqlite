@@ -97,22 +97,24 @@ func main() {
 		timer := false
 		consistency := "weak"
 		prefix := fmt.Sprintf("%s:%d> ", argv.Host, argv.Port)
-		term, err := readline.New(prefix)
+		historyPath, err := history.Path()
+
+		if err != nil {
+			ctx.String("%s Error retrieving path for history file: %v\n", ctx.Color().Red("ERR!"), err)
+			return nil
+		}
+
+		termConfig := readline.Config{
+			Prompt:       prefix,
+			HistoryFile:  historyPath,
+			HistoryLimit: history.Size(),
+		}
+		term, err := readline.NewEx(&termConfig)
 		if err != nil {
 			ctx.String("%s %v\n", ctx.Color().Red("ERR!"), err)
 			return nil
 		}
 		defer term.Close()
-
-		// Set up command history.
-		hr := history.Reader()
-		if hr != nil {
-			histCmds, err := history.Read(hr)
-			if err == nil {
-				term.History = histCmds
-			}
-			hr.Close()
-		}
 
 		hosts := createHostList(argv)
 		client := httpcl.NewClient(httpClient, hosts,
@@ -124,7 +126,7 @@ func main() {
 		for {
 			line, err := term.Readline()
 			if err != nil {
-				if errors.Is(err, prompt.ErrEOF) {
+				if errors.Is(err, io.EOF) {
 					break FOR_READ
 				}
 				return err
@@ -211,13 +213,6 @@ func main() {
 			}
 		}
 
-		hw := history.Writer()
-		sz := history.Size()
-		history.Write(term.History, sz, hw)
-		hw.Close()
-		if sz <= 0 {
-			history.Delete()
-		}
 		ctx.String("bye~\n")
 		return nil
 	})
